@@ -9,6 +9,7 @@ from metrics import (  # noqa: E402
     cost_weighted_matrix,
     escalation_rates,
     per_class_report,
+    roc_auc_ovr,
     weighted_kappa,
 )
 
@@ -50,3 +51,20 @@ def test_escalation_rates():
 def test_weighted_kappa_is_between_bounds():
     kappa = weighted_kappa(TRUE, PRED)
     assert -1.0 <= kappa <= 1.0
+
+
+# Each class's probability column perfectly separates its positives from negatives,
+# so one-vs-rest AUC should be exactly 1.0 for every class.
+ROC_TRUE = ["CT1", "CT1", "CT2", "CT2", "CT3", "CT3"]
+ROC_PROBA = {
+    "CT1": [0.9, 0.8, 0.2, 0.1, 0.05, 0.05],
+    "CT2": [0.05, 0.05, 0.9, 0.8, 0.1, 0.2],
+    "CT3": [0.05, 0.15, 0.1, 0.1, 0.9, 0.8],
+}
+
+
+def test_roc_auc_ovr_perfect_separation():
+    result = roc_auc_ovr(ROC_TRUE, ROC_PROBA)
+    for cls in ("CT1", "CT2", "CT3"):
+        assert result["per_class"][cls]["auc"] == 1.0
+    assert result["macro_auc"] == 1.0

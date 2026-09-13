@@ -1,10 +1,17 @@
-"""Render the evaluation results dict into a markdown report and a confusion-matrix heatmap."""
+"""Render the evaluation results dict into a markdown report and supporting plots."""
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.calibration import calibration_curve
 
-from config import CLASS_ORDER
+from config import (
+    CALIBRATION_CURVE_PNG_NAME,
+    CLASS_ORDER,
+    CONFUSION_MATRIX_PNG_NAME,
+    ROC_CURVE_PNG_NAME,
+)
 
 
 def save_confusion_heatmap(cm_normalized, path) -> None:
@@ -21,6 +28,43 @@ def save_confusion_heatmap(cm_normalized, path) -> None:
         for j in range(len(CLASS_ORDER)):
             ax.text(j, i, f"{cm_normalized[i, j]:.0%}", ha="center", va="center", fontsize=10)
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
+def save_roc_curve(roc_auc_results: dict, path) -> None:
+    """One ROC curve per class (one-vs-rest) plus the chance diagonal."""
+    fig, ax = plt.subplots(figsize=(5, 5))
+    for cls in CLASS_ORDER:
+        entry = roc_auc_results["per_class"][cls]
+        ax.plot(entry["fpr"], entry["tpr"], label=f"{cls} (AUC = {entry['auc']:.2f})")
+    ax.plot([0, 1], [0, 1], linestyle="--", color="grey", label="Chance")
+    ax.set_xlabel("False positive rate")
+    ax.set_ylabel("True positive rate")
+    ax.set_title("ROC curves (one-vs-rest)")
+    ax.legend(loc="lower right")
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
+def save_calibration_curve(true_labels, proba, path, n_bins: int = 10) -> None:
+    """Reliability diagram per class: predicted confidence vs. observed frequency."""
+    true_labels = np.asarray(true_labels)
+    fig, ax = plt.subplots(figsize=(5, 5))
+    for cls in CLASS_ORDER:
+        y_true_binary = (true_labels == cls).astype(int)
+        y_score = np.asarray(proba[cls])
+        frac_positive, mean_predicted = calibration_curve(
+            y_true_binary, y_score, n_bins=n_bins, strategy="uniform"
+        )
+        ax.plot(mean_predicted, frac_positive, marker="o", label=cls)
+    ax.plot([0, 1], [0, 1], linestyle="--", color="grey", label="Perfectly calibrated")
+    ax.set_xlabel("Mean predicted probability")
+    ax.set_ylabel("Observed frequency")
+    ax.set_title("Calibration curve (reliability diagram)")
+    ax.legend(loc="upper left")
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
@@ -50,6 +94,7 @@ def render_markdown_report(results: dict, n_records: int) -> str:
         for i, c in enumerate(CLASS_ORDER)
     ]
     sections.append(_markdown_table(header, rows))
+    sections.append(f"\n![Confusion matrix]({CONFUSION_MATRIX_PNG_NAME})\n")
 
     sections.append("\n## Per-class precision / recall / F1\n")
     header = ["Class", "Precision", "Recall", "F1", "Support"]
@@ -61,6 +106,22 @@ def render_markdown_report(results: dict, n_records: int) -> str:
     sections.append(_markdown_table(header, rows))
     sections.append(f"\n**Macro F1: {per_class['macro_f1']:.3f}**")
     sections.append(f"\n**Recall(CT1) -- north-star safety metric: {per_class['CT1']['recall']:.3f}**\n")
+
+    sections.append("## ROC-AUC (one-vs-rest)\n")
+    roc_auc = results["roc_auc"]
+    header = ["Class", "AUC"]
+    rows = [[c, f"{roc_auc['per_class'][c]['auc']:.3f}"] for c in CLASS_ORDER]
+    sections.append(_markdown_table(header, rows))
+    sections.append(f"\n**Macro AUC: {roc_auc['macro_auc']:.3f}**")
+    sections.append(f"\n![ROC curves]({ROC_CURVE_PNG_NAME})\n")
+
+    sections.append("## Calibration\n")
+    sections.append(
+        "How trustworthy is the model's confidence score? For a well-calibrated model, "
+        "when it says \"70% confident\", it should be right about 70% of the time "
+        "(points near the dashed diagonal = well calibrated).\n"
+    )
+    sections.append(f"![Calibration curve]({CALIBRATION_CURVE_PNG_NAME})\n")
 
     sections.append("## Severity-weighted cost\n")
     sections.append(f"- Total cost: {cost['total_cost']}")

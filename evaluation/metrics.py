@@ -2,7 +2,13 @@
 from collections import Counter
 
 import numpy as np
-from sklearn.metrics import cohen_kappa_score, confusion_matrix, precision_recall_fscore_support
+from sklearn.metrics import (
+    cohen_kappa_score,
+    confusion_matrix,
+    precision_recall_fscore_support,
+    roc_auc_score,
+    roc_curve,
+)
 
 from config import CLASS_ORDER, COST_MATRIX
 
@@ -72,6 +78,23 @@ def escalation_rates(true_labels, pred_labels) -> dict:
     }
 
 
+def roc_auc_ovr(true_labels, proba) -> dict:
+    """One-vs-rest ROC-AUC per class, plus (fpr, tpr) curve points and a macro average.
+
+    `proba` maps each class in CLASS_ORDER to an array-like of predicted probabilities
+    for that class (e.g. the proba_CT1/CT2/CT3 columns from run_predictions.py).
+    """
+    true_labels = np.asarray(true_labels)
+    per_class = {}
+    for cls in CLASS_ORDER:
+        y_true_binary = (true_labels == cls).astype(int)
+        y_score = np.asarray(proba[cls])
+        fpr, tpr, _ = roc_curve(y_true_binary, y_score)
+        per_class[cls] = {"auc": float(roc_auc_score(y_true_binary, y_score)), "fpr": fpr, "tpr": tpr}
+    macro_auc = float(np.mean([per_class[cls]["auc"] for cls in CLASS_ORDER]))
+    return {"per_class": per_class, "macro_auc": macro_auc}
+
+
 def weighted_kappa(true_labels, pred_labels) -> float:
     """Linear-weighted Cohen's Kappa -- ordinal agreement, secondary to the cost-weighted matrix."""
     return cohen_kappa_score(true_labels, pred_labels, labels=CLASS_ORDER, weights="linear")
@@ -94,7 +117,7 @@ def method_breakdown(true_labels, pred_labels, methods) -> dict:
     }
 
 
-def evaluate_all(true_labels, pred_labels, methods) -> dict:
+def evaluate_all(true_labels, pred_labels, methods, proba) -> dict:
     """Run every metric above and return one combined results dict."""
     return {
         "confusion": confusion(true_labels, pred_labels),
@@ -104,4 +127,5 @@ def evaluate_all(true_labels, pred_labels, methods) -> dict:
         "escalation": escalation_rates(true_labels, pred_labels),
         "weighted_kappa": weighted_kappa(true_labels, pred_labels),
         "method_breakdown": method_breakdown(true_labels, pred_labels, methods),
+        "roc_auc": roc_auc_ovr(true_labels, proba),
     }
