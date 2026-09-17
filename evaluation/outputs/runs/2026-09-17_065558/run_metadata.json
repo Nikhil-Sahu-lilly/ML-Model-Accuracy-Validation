@@ -1,0 +1,12 @@
+{
+  "run_id": "2026-09-17_065558",
+  "timestamp_utc": "2026-09-17T06:56:04.009225+00:00",
+  "git_commit": "28864841e31f756fcd3c5b585927212cafec9e19",
+  "dataset_path": "C:\\Users\\L150858\\OneDrive - Eli Lilly and Company\\Desktop\\EDB AI MODEL\\dataset\\pr_dataset.jsonl",
+  "n_records": 273,
+  "versions": {
+    "python": "3.12.10",
+    "sklearn": "1.9.0",
+    "pandas": "3.0.5"
+  }
+}
